@@ -1,0 +1,9 @@
+# Local secrets — never commit (see release.env.example)
+release.env
+
+# Scratch
+work/
+*.db.tar.gz
+*.db.tar.gz.sig
+*.files.tar.gz
+*.files.tar.gz.sig
