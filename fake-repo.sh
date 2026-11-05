@@ -2,13 +2,15 @@
 #
 # fake-repo.sh — host fixture for publish-repo.sh: no root, no network, no R2.
 #
-# Builds two dummy packages and a throwaway passphrase-protected GPG key, runs
+# Builds dummy packages and a throwaway passphrase-protected GPG key, runs
 # publish-repo.sh offline (WORK_DIR + SKIP_UPLOAD + NO_LOCAL_ENV), and asserts
 # the DB mechanics as measured against repo-add 7.1.0:
 #   - the entry is added, and a version bump replaces it (never duplicates)
 #   - an older version is refused (--prevent-downgrade)
 #   - superseded package files are kept (downgrades stay live on the CDN)
 #   - the DB, the .files DB, and the package signatures verify
+#   - a second package name merges into the same single DB (the multi-package
+#     path: video-player + package-installer share one aelum.db)
 #
 # Run it after every change to publish-repo.sh; it is the cheapest thing that
 # can falsify the publisher.
@@ -25,19 +27,20 @@ trap 'rm -rf "$WORK" "$DIST" "$GNUPGHOME"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 # ── Fixture packages: a real .PKGINFO is what repo-add reads ─────────────────
-make_pkg() { # make_pkg <version>
-    local ver="$1"
+make_pkg() { # make_pkg <name> <version>
+    local name="$1" ver="$2"
     {
-        echo "pkgname = dummy-pkg"
+        echo "pkgname = $name"
         echo "pkgver = $ver-1"
         echo "pkgdesc = fixture package"
         echo "size = 100"
         echo "arch = x86_64"
     } > "$DIST/.PKGINFO"
-    tar --zstd -C "$DIST" -cf "$DIST/dummy-pkg-$ver-1-x86_64.pkg.tar.zst" .PKGINFO
+    tar --zstd -C "$DIST" -cf "$DIST/$name-$ver-1-x86_64.pkg.tar.zst" .PKGINFO
 }
-make_pkg 1.0.0
-make_pkg 1.0.1
+make_pkg dummy-pkg 1.0.0
+make_pkg dummy-pkg 1.0.1
+make_pkg second-pkg 0.1.0
 
 # ── Throwaway signing key, with a passphrase: exercises the headless path ────
 gpg --batch --pinentry-mode loopback --passphrase 'fixture-pass' \
@@ -87,4 +90,15 @@ db_entries | grep -q 'dummy-pkg-1.0.0-1/desc' && fail "downgrade entered the DB 
 publish "$DIST/dummy-pkg-1.0.1-1-x86_64.pkg.tar.zst"
 db_entries | grep -c 'dummy-pkg' | grep -qx 1 || fail "re-publish duplicated the entry"
 
-echo "PASS: fake-repo — add, replace, refuse-downgrade, idempotent re-publish, all signatures verify"
+# ── 5. A second package name merges into the same single DB ──────────────────
+# (The real shape: aelum-video-player and aelum-package-installer share one
+# aelum.db. The publisher takes any package path; the DB must carry both.)
+publish "$DIST/second-pkg-0.1.0-1-x86_64.pkg.tar.zst"
+db_entries | grep -qx 'second-pkg-0.1.0-1/desc' || fail "second-pkg entry missing"
+db_entries | grep -qx 'dummy-pkg-1.0.1-1/desc' || fail "second publish dropped dummy-pkg"
+db_entries | grep -c '/desc$' | grep -qx 2 || fail "unexpected entry count in the merged DB"
+gpg --verify "$WORK/second-pkg-0.1.0-1-x86_64.pkg.tar.zst.sig" \
+     "$WORK/second-pkg-0.1.0-1-x86_64.pkg.tar.zst" >/dev/null 2>&1 \
+    || fail "second-pkg signature does not verify"
+
+echo "PASS: fake-repo — add, replace, refuse-downgrade, idempotent re-publish, two names in one DB, all signatures verify"

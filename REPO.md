@@ -107,10 +107,11 @@ hand-editing.
   and `-<arch>`) — measured against repo-add 7.1.0, used by the verifier.
 - The live session does **not** get the repo: it is offline-first
   (`aelum-offline`). The repo is an installed-system thing. The ISO *build*,
-  however, does resolve the repo once: `aelum-video-player` is listed in
-  `live-iso/packages.x86_64` and `docker/scripts/build-iso.sh` pulls it through
-  an `[aelum]` block — so the package is baked into the offline mirror, the
-  live session ships it, and the installer installs it into every system
+  however, does resolve the repo once: `aelum-video-player` and
+  `aelum-package-installer` are listed in
+  `live-iso/packages.x86_64` and `docker/scripts/build-iso.sh` pulls them through
+  an `[aelum]` block — so the packages are baked into the offline mirror, the
+  live session ships them, and the installer installs them into every system
   from the mirror (no network). The enabled repo then serves *updates*.
 - `SigLevel = Required DatabaseRequired` from day one, so the installer seeds
   the key into the target keyring (`pacman-key --add` + `--lsign-key`) —
