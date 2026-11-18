@@ -9,7 +9,7 @@ bucket: same R2 bucket, same `cdn.aelum.dev`, same release key as the ISOs
 https://cdn.aelum.dev/repo/x86_64/aelum.db(.sig)        ← repo-add DB, signed
 https://cdn.aelum.dev/repo/x86_64/aelum.db.tar.gz(.sig) ← same bytes, older-pacman name
 https://cdn.aelum.dev/repo/x86_64/aelum.files(.sig)     ← file index (pacman -F)
-https://cdn.aelum.dev/repo/x86_64/<pkg>.pkg.tar.zst(.sig) ← immutable, kept forever
+https://cdn.aelum.dev/repo/x86_64/<pkg>.pkg.tar.zst(.sig) ← version-named; newest kept
 https://cdn.aelum.dev/repo/aelum.gpg                    ← public key (non-Aelum bootstrap)
 ```
 
@@ -17,18 +17,28 @@ pacman 7.1 requests the extensionless `aelum.db`; older libalpm asks for
 `aelum.db.tar.gz`. Both names are published, same bytes, same signature —
 exactly what Arch's own mirrors do.
 
-Package files are never deleted; the DB points at the newest, old URLs and
-downgrades keep working.
+**One artifact per package (measured, 2026-11-18):** the release scripts delete
+the superseded package from R2 once the new DB entry has verified
+(`bump-version.sh`, `--keep-old` to skip the deletion), so only the newest of
+each package is on the bucket — `0.7.0-1` answers 200 while `0.6.1-1`, `0.6.0-1`
+and `0.5.12-1` answer 404. Old URLs therefore do **not** keep working and a
+downgrade needs a file you still hold. The ordering is what makes the deletion
+safe: it happens after the new DB is verified, so the *served* DB never names a
+missing file. What can still name one is a **client's own stale database** — a
+machine that has not synced lists the old version, and a bare `pacman -S` then
+404s. Syncing is the whole fix, and `pacman -Syu` and the app's Update press
+both sync first.
 
-**Caching (measured, 2026-11-04):** R2's S3 API does not persist a
-per-object `Cache-Control` — rclone's `--metadata-set cache-control=…` is
-sent but never stored or served. The edge applies Cloudflare's default
-policy (~4 h for these types), so a republished DB is visible to users with
-up to that staleness. Package files are version-named and immutable, so this
-only ever affects how fast a *new version* shows up. If instant visibility
-ever matters, add a Cloudflare Cache Rule for `uri path contains "/repo/"
-and ends with ".tar.gz"` (or `.db*`) → skip cache / edge TTL 0; nothing in
-the scripts changes.
+**Caching (measured, 2026-11-18):** R2's S3 API does not persist a
+per-object `Cache-Control` — rclone's `--metadata-set cache-control=…` is sent
+but never stored or served. Nor does a default TTL stand in for it: the DBs and
+the package files answer `cf-cache-status: DYNAMIC` with no `Cache-Control` and
+no `Age` on back-to-back requests, so the edge does not cache them and a
+republished DB is visible to the next `pacman -Sy` — the 0.7.0 database was
+being served fresh, at its own upload `last-modified`, under three minutes
+after the publish. No purge step is needed or used. If a response ever comes
+back `HIT`, the lever is a Cloudflare Cache Rule on `uri path contains
+"/repo/"` → skip cache; no script changes.
 
 ## For users
 

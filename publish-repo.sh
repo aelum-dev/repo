@@ -8,7 +8,9 @@
 #   repo/x86_64/aelum.db(.sig)             ← repo-add database, signed
 #   repo/x86_64/aelum.db.tar.gz(.sig)      ← same bytes, older-pacman name
 #   repo/x86_64/aelum.files(.sig)          ← file index for pacman -F
-#   repo/x86_64/<pkg>.pkg.tar.zst(.sig)    ← immutable, kept forever
+#   repo/x86_64/<pkg>.pkg.tar.zst(.sig)    ← this publisher keeps every upload
+#                                             (nothing here deletes); a release
+#                                             run prunes the superseded one
 #   repo/aelum.gpg                         ← public key, non-Aelum bootstrap
 #
 # (pacman 7.1 requests the extensionless "<repo>.db"; older libalpm the
